@@ -14,7 +14,7 @@ router.get("/totalCost", (req, res) => {
 
   const query = `SELECT SUM(Total_Charges) AS totalCost 
                  FROM billing_summary 
-                 WHERE yearmonth = ? AND calculationtype = 'Group'`;
+                 WHERE yearmonth = ? AND calculationtype = 'Individual'`;
 
   db.query(query, [month], (err, results) => {
     if (err) {
@@ -37,7 +37,7 @@ router.get("/totalCost/:deviceId", (req, res) => {
   const query = `SELECT Total_Charges 
                  FROM billing_summary 
                  WHERE yearmonth = ? 
-                 AND calculationtype = 'Group' 
+                 AND calculationtype = 'Individual' 
                  AND Device_ID = ?`;
 
   db.query(query, [month, deviceId], (err, results) => {
@@ -103,6 +103,69 @@ router.get("/utilizationStats", (req, res) => {
           consumedGiB,
           totalCapacity,
           utilizationPercentage: ((consumedGiB / totalCapacity) * 100).toFixed(2), // Optional: Calculate utilization percentage
+        });
+      });
+    });
+  });
+
+  // API Route to Fetch Switch Utilization Stats
+router.get("/switchUtilizationStats", (req, res) => {
+    const { month } = req.query;
+  
+    // Ensure the month parameter is provided
+    if (!month) {
+      return res.status(400).json({ error: "Month is required in YYYY-MM format" });
+    }
+  
+    // Query template
+    const query = `SELECT Device_Capacity, Ports_Used FROM device_consumption WHERE Device_ID = ? AND YearMonth = ? AND CalculationType = 'Group'`;
+  
+    // Fetch data for Device_ID 5 (Leaf Switch)
+    db.query(query, [5, month], (err, leafResults) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      
+      const leafSwitch = leafResults.length > 0 ? leafResults[0] : { Device_Capacity: null, Ports_Used: null };
+      
+      // Fetch data for Device_ID 6 (SAN Switch)
+      db.query(query, [6, month], (err, sanResults) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        
+        const sanSwitch = sanResults.length > 0 ? sanResults[0] : { Device_Capacity: null, Ports_Used: null };
+        
+        // Fetch data for Device_ID 8 (Utilization Stats)
+        db.query(query, [8, month], (err, utilResults) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+          
+          const utilizationStats = utilResults.length > 0 ? utilResults[0] : { Device_Capacity: null, Ports_Used: null };
+          
+          // Combine and send the response
+          res.json({
+            month,
+            leafSwitch: {
+              deviceId: 5,
+              name: "Leaf Switch",
+              capacity: leafSwitch.Device_Capacity,
+              portsUsed: leafSwitch.Ports_Used,
+            },
+            sanSwitch: {
+              deviceId: 6,
+              name: "SAN Switch",
+              capacity: sanSwitch.Device_Capacity,
+              portsUsed: sanSwitch.Ports_Used,
+            },
+            utilizationStats: {
+              deviceId: 8,
+              name: "Utilization Stats",
+              capacity: utilizationStats.Device_Capacity,
+              portsUsed: utilizationStats.Ports_Used,
+            },
+          });
         });
       });
     });
